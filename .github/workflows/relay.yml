@@ -6,6 +6,8 @@ on:
 concurrency:
   group: relay
   cancel-in-progress: true
+permissions:
+  contents: write
 jobs:
   relay:
     runs-on: ubuntu-latest
@@ -25,13 +27,21 @@ jobs:
           curl -sSL -o cloudflared https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64
           chmod +x cloudflared
           nohup ./cloudflared tunnel --url http://127.0.0.1:8080 --no-autoupdate > cf.log 2>&1 &
-          for i in $(seq 1 40); do
+          for i in $(seq 1 45); do
             U=$(grep -o 'https://[a-z0-9-]*\.trycloudflare\.com' cf.log | head -1)
-            if [ -n "$U" ]; then echo "TUNNEL_URL=$U"; echo "$U" > tunnel.txt; break; fi
+            if [ -n "$U" ]; then echo "TUNNEL_URL=$U"; echo "$U" > url.txt; break; fi
             sleep 2
           done
-          cat cf.log | head -30
+          echo "--- cf.log tail ---"; tail -20 cf.log
+          cat url.txt 2>/dev/null || echo "NO_URL"
+      - name: publish url
+        run: |
+          git config user.name relay-bot
+          git config user.email relay-bot@users.noreply.github.com
+          git add url.txt || true
+          git commit -m "tunnel $(cat url.txt 2>/dev/null)" || true
+          git push || true
       - name: keep alive
         run: |
-          echo "tunnel: $(cat tunnel.txt 2>/dev/null)"
+          echo "tunnel: $(cat url.txt 2>/dev/null)"
           sleep 21000
