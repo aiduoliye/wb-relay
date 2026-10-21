@@ -1,0 +1,37 @@
+name: relay
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '0 */6 * * *'
+concurrency:
+  group: relay
+  cancel-in-progress: true
+jobs:
+  relay:
+    runs-on: ubuntu-latest
+    timeout-minutes: 355
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: start local relay
+        run: |
+          nohup node relay.js > relay.log 2>&1 &
+          sleep 2
+          cat relay.log
+      - name: start cloudflared tunnel
+        run: |
+          curl -sSL -o cloudflared https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64
+          chmod +x cloudflared
+          nohup ./cloudflared tunnel --url http://127.0.0.1:8080 --no-autoupdate > cf.log 2>&1 &
+          for i in $(seq 1 40); do
+            U=$(grep -o 'https://[a-z0-9-]*\.trycloudflare\.com' cf.log | head -1)
+            if [ -n "$U" ]; then echo "TUNNEL_URL=$U"; echo "$U" > tunnel.txt; break; fi
+            sleep 2
+          done
+          cat cf.log | head -30
+      - name: keep alive
+        run: |
+          echo "tunnel: $(cat tunnel.txt 2>/dev/null)"
+          sleep 21000
